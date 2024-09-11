@@ -1,30 +1,39 @@
 ---
 title: "STK-IN4300"
-author: "kyunhee"
+author: "Kyunhee Park"
 date: "2024-09-11"
 output: html_document
 ---
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
+#source("scripts.R")
 ```
 
-## R Markdown
+# 1. Summary Statistics Table
+Summarizes the information in the data on a variable level.
 
-This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
-
-When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
 
 ```{r cars}
 summary(cars)
 ```
 
-## Including Plots
+# 2. Bad Data Visualization
 
-You can also embed plots, for example:
+For at least one categorical and one continuous variable in your data, make a bad plot and explain why it is bad and possibly even misleading.
 
 ```{r pressure, echo=FALSE}
 plot(pressure)
 ```
 
-Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+# 3. Good Data Visualization
+
+Provide a good version of the bad plot(s) from Problem 2 and explain how the plot has been improved.
+
+# 4. Simple analysis
+
+Perform linear regression on the data, including some method for performing model selection.
+
+Include some measure of performance on the final model.
+
+Based both on the analysis and your previous visualizations, evaluate whether a linear model is sufficient.
