@@ -6,24 +6,77 @@ output: html_document
 ---
 
 ```{r setup, include=FALSE}
+library(magrittr)
+library(here)
+library(readr)
+# Data load and process
 knitr::opts_chunk$set(echo = TRUE)
-#source("scripts.R")
-```
 
+data_raw <- read.csv(here("data/SeoulBikeData.csv"), fileEncoding = "UTF-8")
+
+data <- data_raw %>% dplyr::filter(Functioning.Day == "Yes") %>%                # filter out invalid data
+  dplyr::select(-Functioning.Day)                                           # drop unnecessary col
+
+data_encoded <- data %>% 
+  dplyr::mutate(value = 1) %>% tidyr::spread(Seasons, value, fill = 0) %>%  
+  dplyr::mutate(Holiday = ifelse(Holiday ==  "No Holiday", 0, 1))
+
+#source(paste0(getwd(), "/script.R"))
+```
 # 1. Summary Statistics Table
 Summarizes the information in the data on a variable level.
 
 
-```{r cars}
-summary(cars)
+```{r data summary}
+summary(data_raw)
+summary(data_encoded)
+```
+```{r boxplot}
+ggplot2::ggplot(data_raw %>% dplyr::mutate(CLS = "Total"), 
+                ggplot2::aes(x = CLS, y = Rented.Bike.Count)) + 
+  ggplot2::geom_boxplot()
+
+ggplot2::ggplot(data_raw %>% dplyr::mutate(CLS = "Total"), 
+                ggplot2::aes(x = Seasons, y = Rented.Bike.Count)) + 
+  ggplot2::geom_boxplot()
+
 ```
 
 # 2. Bad Data Visualization
 
 For at least one categorical and one continuous variable in your data, make a bad plot and explain why it is bad and possibly even misleading.
 
-```{r pressure, echo=FALSE}
-plot(pressure)
+## 2.1 Bad Data Visualization - Categorical variable
+
+```{r 2.1-categorical}
+
+```
+
+## 2.2 Bad Data Visualization - Continous variable
+
+```{r 2.2-continous, echo=FALSE}
+library(lubridate)
+
+Hourly_avg <- data %>%
+  dplyr::group_by(Hour) %>%
+  dplyr::summarize(Average_rented_bike = mean(Rented.Bike.Count))
+
+Daily_avg <- data %>% 
+  dplyr::mutate(Year = substr(Date, nchar(Date) -3, nchar(Date))) %>%
+  dplyr::group_by(Year) %>%
+  dplyr::summarize(Average_rented_bike = mean(Rented.Bike.Count))
+
+
+ggplot2::ggplot(data = Hourly_avg,
+  ggplot2::aes(x = Hour, y = Average_rented_bike, group = 1)) + 
+  ggplot2::geom_line(color = "blue") +
+  ggplot2::geom_point()
+
+ggplot2::ggplot(data = Daily_avg,
+  ggplot2::aes(x = Year, y = Average_rented_bike, group = 1)) + 
+  ggplot2::geom_line(color = "blue") +
+  ggplot2::geom_point()
+
 ```
 
 # 3. Good Data Visualization
@@ -37,3 +90,38 @@ Perform linear regression on the data, including some method for performing mode
 Include some measure of performance on the final model.
 
 Based both on the analysis and your previous visualizations, evaluate whether a linear model is sufficient.
+```{r mdl_train, include=FALSE}
+data_encoded$id <- 1:nrow(data_encoded)
+
+train_set <- data_encoded %>% dplyr::sample_frac(0.8)
+
+test_set <- dplyr::anti_join(data_encoded, train_set, by = 'id')
+
+# colnames(train_set)
+
+mlr_model <- lm(Rented.Bike.Count ~ Hour + Temperature.C. + Humidity... + Wind.speed..m.s. + Visibility..10m. + Dew.point.temperature.C. + Solar.Radiation..MJ.m2. + Rainfall.mm. + Snowfall..cm. + Holiday + Autumn + Spring + Summer + Winter, 
+              data = train_set)
+
+glm_model <- glm(Rented.Bike.Count ~ Hour + Temperature.C. + Humidity... + Wind.speed..m.s. + Visibility..10m. + Dew.point.temperature.C. + Solar.Radiation..MJ.m2. + Rainfall.mm. + Snowfall..cm. + Holiday + Autumn + Spring + Summer + Winter, 
+                 family = poisson(link = "log"), 
+                 data = train_set)
+
+
+summary(glm_model)
+
+summary(model)
+
+plot(glm_model)
+
+prediction_glm <- predict(glm_model, newdata = test_set)
+
+prediction_glm_df <- data.frame(prediction_glm)
+
+test_set_baseline <-  test_set %>% dplyr::select(id, Date, Hour, Rented.Bike.Count)
+
+merged_df_test_set <- cbind(test_set_baseline, prediction_glm_df)
+merged_df_test_set <- merged_df_test_set %>% dplyr::mutate(predicted_rented_bike = exp(prediction_glm))
+
+
+```
+
