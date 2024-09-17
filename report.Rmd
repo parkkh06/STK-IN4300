@@ -63,16 +63,6 @@ The table below shows the summary table of preprocessed dataset.
 ```{r summary, echo=FALSE}
 summary(data)
 ```
-```{r boxplot, echo=FALSE}
-ggplot2::ggplot(data %>% dplyr::mutate(CLS = "Total"), 
-                ggplot2::aes(x = CLS, y = Rented.Bike.Count)) + 
-  ggplot2::geom_boxplot()
-
-
-
-
-
-```
 
 # 2. Bad Data Visualization
 
@@ -80,20 +70,77 @@ For at least one categorical and one continuous variable in your data, make a ba
 
 ## 2.1 Bad Data Visualization - Categorical variable
 
-```{r 2.1-categorical}
-ggplot2::ggplot(data %>% dplyr::mutate(CLS = "Total"), 
-                ggplot2::aes(x = CLS, y = Rented.Bike.Count)) + 
-  ggplot2::geom_boxplot()
+The boxplot below shows the number of holidays in 4 different seasons (Autumn, Spring, Summer, Winter).
+```{r 2.1-categorical, echo=FALSE}
+ggplot2::ggplot(data %>%
+                  dplyr::group_by(Holiday) %>%
+                  dplyr::summarise(
+                    avg_rent = mean(Rented.Bike.Count)), 
+                ggplot2::aes(x = Holiday, y = avg_rent)) + 
+  ggplot2::geom_bar(stat = "identity")
+
+ggplot2::ggplot(data %>%
+                  dplyr::group_by(Holiday) %>%
+                  dplyr::summarise(
+                    avg_rent = mean(Rented.Bike.Count)), 
+                ggplot2::aes(x = Holiday, y = avg_rent)) + 
+  ggplot2::geom_bar(stat = "identity")
+
+
+ggplot2::ggplot(data,
+                ggplot2::aes(x = Seasons, fill = Holiday)) + 
+  ggplot2::geom_bar(stat = "count", position = "stack") + 
+  ggplot2::geom_line(aes())
+
+
+ggplot2::ggplot(data) +
+  ggplot2::geom_bar(ggplot2::aes(x = Seasons, fill = Holiday), stat = "count", position = "stack") + 
+  ggplot2::geom_line(ggplot2::aes(x = Seasons, y = Rented.Bike.Count), stat = "identity", color = "red")
+
+
+data %>% dplyr::group_by(Seasons, Holiday) %>% dplyr::summarize(CNT = dplyr::n(), Avg_rent = mean(Rented.Bike.Count))
+
+ggplot2::ggplot(data %>% dplyr::group_by(Seasons) %>% dplyr::summarize(Rented.Bike.Count = mean(Rented.Bike.Count))) + 
+  ggplot2::geom_line(ggplot2::aes(x = Seasons, y = Rented.Bike.Count, group = 1))
+
+ggplot2::ggplot(data %>% dplyr::group_by(Seasons, Holiday) %>% dplyr::summarize(CNT = dplyr::n(), Avg_rent = mean(Rented.Bike.Count))) + 
+  ggplot2::geom_line(ggplot2::aes(x = Seasons, y = Avg_rent), group = 1)
+  
+  
+  ggplot2::geom_bar(ggplot2::aes(x = Seasons, fill = Holiday), position = "dodge")
+
 ```
 
 ## 2.2 Bad Data Visualization - Continous variable
 
-The figure below shows 
+The figure below shows the trend of bike usage throughout the timeline. The dataset contains seasonal time-series data. However, just simply providing time-series data for entire period does not provide any insights. Therefore, this graph can be modified in a more concise manner.
 ```{r 2.2-continous, echo=FALSE}
 ggplot2::ggplot(data = data,
   ggplot2::aes(x = Date, y = Rented.Bike.Count, group = 1)) + 
-  ggplot2::geom_line(color = "blue") +
-  ggplot2::geom_point()
+  ggplot2::geom_line(color = "blue", size = 1) +
+  ggplot2::geom_point(size = 1)
+
+
+ggplot2::ggplot(data = data,
+  ggplot2::aes(x = Rainfall.mm., y = Rented.Bike.Count)) + 
+  ggplot2::geom_line()
+
+ggplot2::ggplot(data = data,
+  ggplot2::aes(y = Rented.Bike.Count)) + 
+  ggplot2::geom_bar()
+
+ggplot2::ggplot(data = data,
+  ggplot2::aes(x = Temperature.C., y = Rented.Bike.Count, group = 1)) + 
+  ggplot2::geom_line(color = "blue", size = 1) +
+  ggplot2::geom_point(size = 1)
+
+ggplot2::ggplot(data = data,
+  ggplot2::aes(x = Rented.Bike.Count, y = Hour)) + 
+  ggplot2::geom_line()
+
+
+ggplot2::ggplot(data, ggplot2::aes(x = Temperature.C.)) + 
+  ggplot2::geom_histogram()
 ```
 
 # 3. Good Data Visualization
@@ -102,21 +149,33 @@ Provide a good version of the bad plot(s) from Problem 2 and explain how the plo
 ## 3.1 Good Data Visualization - Categorical variable
 
 ```{r 3.1-categorical, echo=FALSE}
+ggplot2::ggplot(data,
+                ggplot2::aes(x = Seasons, y = Rented.Bike.Count, fill = Holiday)) + 
+  ggplot2::geom_boxplot() + 
+  ggplot2::facet_wrap(~ Holiday)
 
-plot_rent_cnt_season <- ggplot2::ggplot(data, ggplot2::aes(x = Seasons, y = Rented.Bike.Count)) +
-  ggplot2::geom_boxplot()
-
-plot_rent_cnt_holiday <- ggplot2::ggplot(data, ggplot2::aes(x = Holiday, y = Rented.Bike.Count)) + 
-  ggplot2::geom_boxplot()
-
-plot_rent_cnt_holiday
-plot_rent_cnt_season
 ```
+## 3.1 Good Data Visualization - Continous variable
+
 
 ```{r 3.2-continous, echo=FALSE}
 Hourly_avg <- data %>%
   dplyr::group_by(Hour) %>%
   dplyr::summarize(Average_rented_bike = mean(Rented.Bike.Count))
+
+Hourly_avg <- data %>%
+  dplyr::group_by(Hour, Seasons) %>%
+  dplyr::summarize(Average_rented_bike = mean(Rented.Bike.Count))
+
+
+ggplot2::ggplot(data = data %>% dplyr::group_by(Hour, Seasons) %>% dplyr::summarize(Avg_rented_bike = mean(Rented.Bike.Count)),
+                ggplot2::aes(x = Hour, y = Avg_rented_bike, group = Seasons)) + 
+  ggplot2::geom_line(ggplot2::aes(color = Seasons), size = 1) + 
+  ggplot2::geom_point(color = "black", size = 0.7) + 
+  ggplot2::labs(x = "Time: 12AM-23PM", y = "Average Rented count")
+  
+  
+  ggplot2::scale_color_manual(name = "Seaons", values = c("Autumn" = "red", "Winter" = "blue", "Spring" = "yellow", "Summer" = "green"))
 
 ggplot2::ggplot(data = Hourly_avg,
   ggplot2::aes(x = Hour, y = Average_rented_bike, group = 1)) + 
@@ -124,8 +183,6 @@ ggplot2::ggplot(data = Hourly_avg,
   ggplot2::geom_point()
 
 ```
-
-
 
 # 4. Simple analysis
 
