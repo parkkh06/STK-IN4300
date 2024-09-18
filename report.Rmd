@@ -8,14 +8,17 @@ output:
   pdf_document: default
 ---
 
-```{r setup, echo=TRUE}
+```{r library, include=FALSE, echo=FALSE}
 library(magrittr)
 library(here)
 library(caret)
 library(MASS)
 library(gridExtra)
 library(corrplot)
+library(glmnet)
+```
 
+```{r setup, echo=TRUE}
 # Data load and process
 knitr::opts_chunk$set(echo = TRUE)
 
@@ -206,6 +209,12 @@ df_x_cont_scaled <- df_x_cont %>%
 df_y <- data %>% dplyr::select(Rented.Bike.Count)
 
 df_mdl_input <- cbind(df_x_cate, df_x_cont_scaled, df_y)
+
+df_mdl_input$id <- 1:nrow(df_mdl_input)                         # unique key generation
+
+train_set <- df_mdl_input %>% dplyr::sample_frac(0.8)                     # Train set
+test_set  <- dplyr::anti_join(df_mdl_input, train_set, by = 'id')         # Test set  
+
 ```
 
 ## 4.2 Feature selection.
@@ -233,41 +242,45 @@ corrplot(correlation, method = "color", type = "lower", tl.col = "black", tl.srt
 - Which is obvious result since Temperature and Dew.point.temperature.C are highly correlated (0.91).
 - Therefore, Dew.point.temperature.C variable is dropped.
 
-### 4.2.3 Feature selection - Backward.
+### 4.2.4 Lasso regression
 ```{r 4.2.4, echo=TRUE}
-full_mdl <- lm(Rented.Bike.Count ~ ., data = df_mdl_input)
-backward_mdl <- stepAIC(full_mdl, direction = "backward")
+set.seed(2024)
+
+x_train_lasso <- train_set %>%
+  dplyr::select(-Dew.point.temperature.C., -Rented.Bike.Count, -id) %>%
+  dplyr::mutate_if(is.factor, as.numeric) %>%                         # Convert factors to numeric
+  dplyr::mutate_if(is.character, as.numeric) %>%                      # Convert characters to numeric
+  as.matrix()
+
+y_train_lasso <- as.matrix(train_set %>% dplyr::select(Rented.Bike.Count))
+
+cv_lasso <- cv.glmnet(x_train_lasso, y_train_lasso, alpha = 1)
+
+opt_lambda <- cv_lasso$lambda.min                                        # find optimal lambda
+
+mdl_lasso_reg <- glmnet(x_train_lasso, y_train_lasso, alpha = 1, lambda = opt_lambda)
+
+print(paste("The optimal value of lambda is:", opt_lambda))
+print(coef(mdl_lasso_reg))
 ```
-
-
-```{r}
-null_mdl <- lm(Rented.Bike.Count ~ 1, data = df_mdl_input)
-forward_mdl <- stepAIC(null_mdl, direction = "forward")
-```
-
 
 ## 4.3 Model selection
-Selected Method: Multiple Linear Regression.
-
-## 4.4 Validation
-K-fold Cross Validation.
-```{r}
-train_control <- caret::trainControl(method = "cv",
-                                     number = 5)
-
-model <- caret::train(Rented.Bike.Count ~ Hour + Seasons + Holiday +
-                        Temperature.C. + Humidity... + Wind.speed..m.s. + Visibility..10m. + Dew.point.temperature.C. +
-                          Solar.Radiation..MJ.m2. + Rainfall.mm. + Snowfall..cm., 
-                        data = df_mdl_input, method = "lm", trControl = train_control)
-
-```
-
+Selected Method: Multiple Linear Regression - Lasso shrinkage.
 
 ## 4.5 Model Performance.
-```{r}
+```{r 4.5, echo=TRUE}
+x_test <- test_set %>%
+  dplyr::select(-Dew.point.temperature.C., -Rented.Bike.Count, -id) %>%
+  dplyr::mutate_if(is.factor, as.numeric) %>%                         # Convert factors to numeric
+  dplyr::mutate_if(is.character, as.numeric) %>%                      # Convert characters to numeric
+  as.matrix()
 
+y_test <- as.matrix(test_set %>% dplyr::select(Rented.Bike.Count))
+
+y_pred <- predict(mdl_lasso_reg, s = opt_lambda, newx = x_test)
+
+print(paste("Test MES is:", sqrt(mean((y_test - y_pred)^2))))
 ```
-
 
 # 5. Analysis assessment
 
@@ -290,10 +303,11 @@ ggplot2::ggplot(data = data %>%
 
 ## 5.3 Generalized Linear Model.
 - Response variable should be non-negative.
+- Negative predicted values exist.
 - GLM(Poisson, log link) could have been considered.
-
 
 ## 5.4 Correlation between categorical and continous variables.
 - Temperature and Seasons are likely to be correlated.
 
 # 6. Conclusion
+- Multiple Linear Regression is not considered to be enough to predict bike rental counts.
