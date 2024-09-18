@@ -1,32 +1,35 @@
 ---
 title: "STK-IN4300"
+subtitle: "Assignment 1"
 author: "Kyunhee Park"
-date: "2024-09-11"
-output: html_document
+date: "2024-09-18"
+output:
+  html_document: default
+  pdf_document: default
 ---
 
-```{r setup, include=FALSE}
+```{r setup, echo=TRUE}
 library(magrittr)
 library(here)
+library(caret)
+library(MASS)
+library(gridExtra)
+library(corrplot)
+
 # Data load and process
 knitr::opts_chunk$set(echo = TRUE)
 
 data_raw <- read.csv(here("data/SeoulBikeData.csv"), fileEncoding = "UTF-8")
 
-data <- data_raw %>% dplyr::filter(Functioning.Day == "Yes") %>%                # filter out invalid data
+data <- data_raw %>% dplyr::filter(Functioning.Day == "Yes") %>%                # filter out invalid 
   dplyr::select(-Functioning.Day)                                           # drop unnecessary col
 
 data$Date <- as.factor(data$Date)
 data$Seasons <- as.factor(data$Seasons) # categorical variable: factorize
 data$Holiday <- as.factor(data$Holiday) # categorical variable: factorize
 data$Hour <- as.factor(data$Hour)
-
-#data_encoded <- data %>% 
-#  dplyr::mutate(value = 1) %>% tidyr::spread(Seasons, value, fill = 0) %>%  
-#  dplyr::mutate(Holiday = ifelse(Holiday ==  "No Holiday", 0, 1))
-
-#source(paste0(getwd(), "/script.R"))
 ```
+
 # 1. Summary Statistics Table
 Summarizes the information in the data on a variable level.
 
@@ -62,7 +65,7 @@ Summarizes the information in the data on a variable level.
 
 The table below shows the summary table of preprocessed dataset.
 
-```{r summary, echo=FALSE}
+```{r summary, echo=TRUE}
 summary(data)
 ```
 
@@ -75,7 +78,7 @@ For at least one categorical and one continuous variable in your data, make a ba
 - X axis: Holiday/No Holiday
 - Y axis: Average Rented.Bike.Count
 
-```{r 2.1-categorical, echo=FALSE}
+```{r 2.1-categorical, echo=TRUE}
 ggplot2::ggplot(data %>%
                   dplyr::group_by(Holiday) %>%
                   dplyr::summarise(
@@ -84,22 +87,24 @@ ggplot2::ggplot(data %>%
   ggplot2::geom_bar(stat = "identity") + 
   ggplot2::labs(x = "Holiday", y = "Average rented bike")
 ```
+
 - Does not provide information regarding seasonal effect.
-- Lack of information regarding distribution - Quantile, Median, Min, Max
+- Lack of information regarding distribution, Quantile, Median, Min, Max
 
 
 ## 2.2 Bad Data Visualization - Continous variable
 
-- X axis: Hour, 0 ~ 23
+- X axis: Temperature
 - Y axis: Rented.Bike.Count
 
-```{r 2.2-continous, echo=FALSE}
+```{r 2.2-continous, echo=TRUE}
 ggplot2::ggplot(data = data,
   ggplot2::aes(x = Temperature.C., y = Rented.Bike.Count)) + 
   ggplot2::geom_line()
 ```
+
 - Does not include seasonal effect.
-- Hour variable repeats everyday, needs to be grouped.
+- Rented.Bike.Count increases as the temperature increases, but no additional information is obtainable.
 
 # 3. Good Data Visualization
 Provide a good version of the bad plot(s) from Problem 2 and explain how the plot has been improved.
@@ -108,41 +113,55 @@ Provide a good version of the bad plot(s) from Problem 2 and explain how the plo
 
 ### 3.1.1 Improvements
 - Include seasonal effect.
-- Provide distribution of the bike rentals.
+- Provide the distribution of the bike rentals per Seasons.
+- Provide the distribution of the bike retnals per Hour.
 
-```{r 3.1-categorical, echo=FALSE}
-ggplot2::ggplot(data,
-                ggplot2::aes(x = Seasons, y = Rented.Bike.Count, fill = Holiday)) + 
+```{r 3.1-categorical, echo=TRUE}
+plot_Seasons_Holiday_boxplot <- 
+  ggplot2::ggplot(data,
+                  ggplot2::aes(x = Seasons, y = Rented.Bike.Count, fill = Holiday)) +
   ggplot2::geom_boxplot() + 
   ggplot2::facet_wrap(~ Holiday)
 
-
-ggplot2::ggplot(data,
-                ggplot2::aes(x = Hour, y = Rented.Bike.Count, fill = Hour)) + 
+plot_Hour_boxplot <- 
+  ggplot2::ggplot(data,
+                  ggplot2::aes(x = Hour, y = Rented.Bike.Count, fill = Hour)) + 
   ggplot2::geom_boxplot()
+
+grid.arrange(plot_Seasons_Holiday_boxplot, plot_Hour_boxplot, nrow = 2)
+
 ```
+
 ### 3.1.2 Interpretation
 - No Holiday has overall higher demands.
-- Normal observations are similar in both on Holiday/No Holiday.
+- The ranges of 25th quantile-75th quantile are similar in both on Holiday/No Holiday.
 - More frequent extreme values in No Holiday, likely to be during the rush-hour.
+- The demand for bike rental is highest during the rush-hour, Hour variable 8 and 18.
 
 
 ## 3.2 Good Data Visualization - Continous variable
 
+- Each point corresponds to one observation.
+- Ex) In Autumn, there are observations above 3000 when the temperature is around 25. Likely to be during the rush-hour.
+
 ### 3.1.1 Improvements
 
-- Grouped by Seasons to demonstrate seasonal effect.
+- Include the seasonal effect.
+- Provide the distribution of Rented.Bike.Count.
 ```{r 3.2-continous, echo=FALSE}
-ggplot2::ggplot(data = data %>% 
-                  dplyr::group_by(Hour, Seasons) %>% 
-                  dplyr::summarize(Average_rented_bike = sum(Rented.Bike.Count)),
-                ggplot2::aes(x = Hour, y = Average_rented_bike, group = Seasons)) + 
-  ggplot2::geom_line(ggplot2::aes(color = Seasons), size = 1) + 
-  ggplot2::geom_point(color = "grey", size = 0.7)
+
+ggplot2::ggplot(data, ggplot2::aes(x = Temperature.C., y = Rented.Bike.Count, color = Seasons)) +
+  ggplot2::geom_point() +
+  ggplot2::facet_wrap(~ Seasons) +
+  ggplot2::labs(title = "Rented Bike Count",
+                x = "Temperature (C)",
+                y = "Rented Bike Count")
 ```
+
 ### 3.2.1 Interpretations
-- Reaches peak during the rush hour, 8-9AM, 18-19PM.
-- Rental demand differs substantially in Winter.
+- The range of temperature is similar in the Autumn and Spring.
+- In summer, there are more observations above 2500 Compare to Autumn and Spring.
+- In winter, bike rentals observations are relatively low, below 1000.
 
 # 4. Simple analysis
 
@@ -150,92 +169,131 @@ Perform linear regression on the data, including some method for performing mode
 Include some measure of performance on the final model.
 Based both on the analysis and your previous visualizations, evaluate whether a linear model is sufficient.
 
+## 4.1 Data preprocessing
 
-```{r mdl_train, include=FALSE}
-library(caret)
-library(MASS)
-#data$id <- 1:nrow(data)      # unique key id
+### 4.1.1 Categorical variable.
+
+- Four categorical variables: Date, Seasons, Holiday, Hour.
+- Drop Date variable: Considered not necessary. Including this variable will generate excessive predicators.
+- Factorize the categorical variables: Seasons, Holiday, Hour.
+
+```{r 4.1.1, echo=TRUE}
+data <- data %>% dplyr::select(-Date)           # drop Date variable.
+data$Seasons <- as.factor(data$Seasons) # categorical variable: factorize
+data$Holiday <- as.factor(data$Holiday) # categorical variable: factorize
+data$Hour <- as.factor(data$Hour)
 
 df_x_cate <- data %>% dplyr::select(where(is.factor))
+```
 
-df_x_cont <- data %>% dplyr::select(where(~!is.factor(.))) %>%
-  dplyr::select(-Rented.Bike.Count)
+### 4.1.2 Continous variable.
 
-df_y <- data %>% dplyr::select(Rented.Bike.Count)
+- Select the continous variables.
+- Deselect the response variable.
+- Apply scaling to the continous variables.
+
+```{r 4.1.2, echo=TRUE}
+df_x_cont <- data %>% dplyr::select(where(~!is.factor(.))) %>%   # Continous variables
+  dplyr::select(-Rented.Bike.Count)                              # deselect the response variable
 
 df_x_cont_scaled <- df_x_cont %>% 
-  dplyr::mutate(across(where(is.numeric), scale))
+  dplyr::mutate(across(where(is.numeric), scale))               # apply scaling.
+```
+
+### 4.1.3 Generate model input dataset
+
+```{r 4.1.3, echo=TRUE}
+df_y <- data %>% dplyr::select(Rented.Bike.Count)
+
+df_mdl_input <- cbind(df_x_cate, df_x_cont_scaled, df_y)
+```
+
+## 4.2 Feature selection.
+
+### 4.2.1 Variables visualization - categorical variables.
+```{r 4.2.1, echo=TRUE}
+plot(cbind(df_x_cate, df_y))
+```
+
+### 4.2.2 Variables visualization - continous variables.
+
+```{r 4.2.2, echo=TRUE}
+plot(cbind(df_x_cont_scaled, df_y))
+```
+
+### 4.2.3 Correlation - Numerical variables.
+```{r 4.2.3, echo=TRUE}
+correlation <- cor(x = cbind(df_x_cont_scaled, df_y), method = "pearson")
+
+corrplot(correlation, method = "color", type = "lower", tl.col = "black", tl.srt = 45, 
+         addCoef.col = "black", number.cex = 0.75)
+```
+
+- Temperature and Dew.point.temperature.C have the highest correlation with the response variable.
+- Which is obvious result since Temperature and Dew.point.temperature.C are highly correlated (0.91).
+- Therefore, Dew.point.temperature.C variable is dropped.
+
+### 4.2.3 Feature selection - Backward.
+```{r 4.2.4, echo=TRUE}
+full_mdl <- lm(Rented.Bike.Count ~ ., data = df_mdl_input)
+backward_mdl <- stepAIC(full_mdl, direction = "backward")
+```
 
 
-df_mdl_input <- cbind(df_x_cate, df_x_cont_scaled, df_y) %>%
-  dplyr::select(-Date)
+```{r}
+null_mdl <- lm(Rented.Bike.Count ~ 1, data = df_mdl_input)
+forward_mdl <- stepAIC(null_mdl, direction = "forward")
+```
 
+
+## 4.3 Model selection
+Selected Method: Multiple Linear Regression.
+
+## 4.4 Validation
+K-fold Cross Validation.
+```{r}
 train_control <- caret::trainControl(method = "cv",
                                      number = 5)
 
-model_1 <- caret::train(Rented.Bike.Count ~ Date + Hour + Seasons + Holiday +
+model <- caret::train(Rented.Bike.Count ~ Hour + Seasons + Holiday +
                         Temperature.C. + Humidity... + Wind.speed..m.s. + Visibility..10m. + Dew.point.temperature.C. +
-                        Solar.Radiation..MJ.m2. + Rainfall.mm. + Snowfall..cm., 
-                      data = df_mdl_input, method = "lm", trControl = train_control)
+                          Solar.Radiation..MJ.m2. + Rainfall.mm. + Snowfall..cm., 
+                        data = df_mdl_input, method = "lm", trControl = train_control)
 
-
-model_2 <- caret::train(Rented.Bike.Count ~ Hour + Seasons + Holiday +
-                        Temperature.C. + Humidity... + Wind.speed..m.s. + Visibility..10m. + Dew.point.temperature.C. +
-                        Solar.Radiation..MJ.m2. + Rainfall.mm. + Snowfall..cm., 
-                      data = df_mdl_input, method = "lm", trControl = train_control)
-
-
-# correlation
-cor(x = cbind(df_x_cont_scaled, df_y), method = "pearson")
-
-plot(cbind(df_x_cont_scaled, df_y))
-
-# feature selection
-
-forw <- lm(Rented.Bike.Count ~ 1, data = df_mdl_input)
-back <- lm(Rented.Bike.Count ~ ., data = df_mdl_input)
-
-
-step(forw, direction = "forward", scope=list(lower=forw, upper=back))
-
-
-feature_selection <- stepAIC(lm(Rented.Bike.Count ~ Date + Hour + Seasons + Holiday +
-                        Temperature.C. + Humidity... + Wind.speed..m.s. + Visibility..10m. + Dew.point.temperature.C. +
-                        Solar.Radiation..MJ.m2. + Rainfall.mm. + Snowfall..cm.), direction = "both")
-
-
-train_set <- df_mdl_input %>% dplyr::sample_frac(0.8)
-
-
-test_set <- dplyr::anti_join(data, train_set, by = 'id')
-
-# colnames(train_set)
-
-mlr_model <- lm(Rented.Bike.Count ~ Date + Hour + Temperature.C. + Humidity... + Wind.speed..m.s. + Visibility..10m. + Dew.point.temperature.C. + Solar.Radiation..MJ.m2. + Rainfall.mm. + Snowfall..cm. + Seasons + Holiday, data = train_set)
-
-glm_model <- glm(Rented.Bike.Count ~ Hour + Temperature.C. + Humidity... + Wind.speed..m.s. + Visibility..10m. + Dew.point.temperature.C. + Solar.Radiation..MJ.m2. + Rainfall.mm. + Snowfall..cm. + Seasons + Holiday, 
-                 family = poisson(link = "log"), 
-                 data = train_set)
-
-
-summary(mlr_model)
-
-plot(mlr_model)
-
-prediction_mlr <- predict(mlr_model, newdata = test_set)
-
-prediction_glm <- predict(glm_model, newdata = test_set)
-
-prediction_mlr_df <- data.frame(prediction_mlr)
-
-test_set_baseline <-  test_set %>% dplyr::select(id, Date, Hour, Rented.Bike.Count)
-
-merged_df_test_set <- cbind(test_set_baseline, prediction_mlr_df)
 ```
 
-# 5. Analysis assessment
-- Time series data, seasonal effect and Date column are not considered.
-- Hour is important - obvious that it moves based on the time. Peaks at rush hour.
-- GLM
-- Interationg term
 
+## 4.5 Model Performance.
+```{r}
+
+```
+
+
+# 5. Analysis assessment
+
+## 5.1 Time series data
+- Seasonal effect should have been considered.
+
+## 5.2 Time series - Hour variable
+- The trend of Hour variable is likely to have significant impact on the response variable.
+- Time series analysis on Hour variable should have been included.
+- Highest during rush hours.
+
+```{r 5.2, echo=FALSE}
+ggplot2::ggplot(data = data %>% 
+                  dplyr::group_by(Hour, Seasons) %>% 
+                  dplyr::summarize(Sum_rented_bike = sum(Rented.Bike.Count)),
+                ggplot2::aes(x = Hour, y = Sum_rented_bike, group = Seasons)) + 
+  ggplot2::geom_line(ggplot2::aes(color = Seasons), size = 1) + 
+  ggplot2::geom_point(color = "grey", size = 0.7)
+```
+
+## 5.3 Generalized Linear Model.
+- Response variable should be non-negative.
+- GLM(Poisson, log link) could have been considered.
+
+
+## 5.4 Correlation between categorical and continous variables.
+- Temperature and Seasons are likely to be correlated.
+
+# 6. Conclusion
