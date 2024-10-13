@@ -298,7 +298,7 @@ ggplot2::ggplot(data = data %>%
                   dplyr::summarize(Sum_rented_bike = sum(Rented.Bike.Count)),
                 ggplot2::aes(x = Hour, y = Sum_rented_bike, group = Seasons)) + 
   ggplot2::geom_line(ggplot2::aes(color = Seasons), size = 1) + 
-  ggplot2::geom_point(color = "grey", size = 0.7)
+  ggplot2::geom_point(color = "grey", size = 0.7) 
 ```
 
 ## 5.3 Generalized Linear Model.
