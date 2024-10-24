@@ -1,0 +1,23 @@
+---
+title: "assignment_2"
+author: "Kyunhee Park"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+data_raw_q1 <- read.csv2("data/qsar_aquatic_toxicity.csv", header = FALSE)
+```
+
+# Problem 1. Regression
+
+
+
+# Problem 2. Classification
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+data_raw_q2 <- read.csv("data/pimaindiansdiabetes2.csv")
+
+```
