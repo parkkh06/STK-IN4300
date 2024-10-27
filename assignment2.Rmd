@@ -12,6 +12,12 @@ library(dplyr)
 library(caret)
 library(purrr)
 library(ggplot2)
+library(MASS)
+library(glmnet)
+library(boot)
+library(mgcv)
+library(rpart)
+library(rpart.plot)
 ```
 
 # Problem 1. Regression
@@ -39,6 +45,7 @@ test_data   <- data_raw_q1[!sample, ]
 
 ### 1-(a)-(i)
 
+(i) model each of them directly as a linear effect
 ```{r 1-a-i}
 mdl_linear <- lm(LC50 ~ TPSA + SAacc + H050 + MLOGP + RDCHI + GATS1p + nN + C040, data = train_data)
 
@@ -54,7 +61,10 @@ summary(mdl_linear)
 
 ### 1-(a)-(ii)
 
-Data encoding
+(ii) transform each of them using a 0/1 dummy encoding where 0 represents absence of the specific atom and 1 represents presence of the specific atoms.
+
+
+**Data encoding**
 ```{r 1-a-ii-encode}
 train_data_encode <- train_data %>% 
   dplyr::mutate(H050_encode = ifelse(H050 > 0, 1, 0),
@@ -70,6 +80,7 @@ test_data_encode <- test_data %>%
 ```
 
 
+**Model training**
 ```{r 1-a-ii-mdl}
 mdl_encode <- lm(LC50 ~ TPSA + SAacc + H050_encode + MLOGP + RDCHI + GATS1p + nN_encode + C040_encode, 
                  data = train_data_encode)
@@ -181,16 +192,198 @@ ggplot(train_test_error_df) +
 
 ## 1-(c)
 
-```{r 1-c}
+Variable selection
+```{r 1-c-variable-selection}
+# Define the full model (all predictors included)
+full_model <- lm(LC50 ~ TPSA + SAacc + H050 + MLOGP + RDCHI + GATS1p + nN + C040, data = data_raw_q1)
+
+# Define the null model (only intercept)
+null_model <- lm(LC50 ~ 1, data = data_raw_q1)
+
+# Perform Backward Elimination with AIC
+backward_aic <- step(full_model, direction = "backward", k = 2)  # AIC criterion (default in step function)
+
+# Perform Backward Elimination with BIC
+backward_bic <- step(full_model, direction = "backward", k = log(nrow(data_raw_q1)))  # BIC criterion
+
+# Perform Forward Selection with AIC
+forward_aic <- step(null_model, scope = formula(full_model), direction = "forward", k = 2)  # AIC criterion
+
+# Perform Forward Selection with BIC
+forward_bic <- step(null_model, scope = formula(full_model), direction = "forward", k = log(nrow(data_raw_q1)))  # BIC criterion
+
+# Extract selected variables for each model
+selected_backward_aic <- names(coef(backward_aic))[-1]
+selected_backward_bic <- names(coef(backward_bic))[-1]
+selected_forward_aic <- names(coef(forward_aic))[-1]
+selected_forward_bic <- names(coef(forward_bic))[-1]
+```
+
+```{r 1-c-result}
+# Print the selected variables for comparison
+cat("Backward Selection (AIC):", selected_backward_aic, "\n")
+cat("Backward Selection (BIC):", selected_backward_bic, "\n")
+cat("Forward Selection (AIC):", selected_forward_aic, "\n")
+cat("Forward Selection (BIC):", selected_forward_bic, "\n")
+```
+
+- The variable selection shows the same result for Backward- and Forward selection on both AIC and BIC criteria.
+
+## 1-(d)
+
+```{r 1-d}
+
+X <- as.matrix(data_raw_q1 %>% dplyr::select(-LC50)) 
+y <- data_raw_q1$LC50
+
+# Define a grid of lambda
+lambda_grid <- 10^seq(5, -5, length = 100)
+
+# CV - optimal lamnda
+set.seed(123)
+cv_ridge <- cv.glmnet(X, y, alpha = 0, lambda = lambda_grid, nfolds = 5)
+optimal_lambda_cv <- cv_ridge$lambda.min  # Lambda with minimum MSE in CV
+
+# Bootstrap to find optimal lambda
+bootstrap_ridge <- function(data, indices) {
+  # Bootstrap resampling
+  X_boot <- X[indices, ]
+  y_boot <- y[indices]
+  
+  # Fit ridge regression model for each lambda
+  fit <- glmnet(X_boot, y_boot, alpha = 0, lambda = lambda_grid)
+  
+  # Use cross-validation on bootstrap sample to find the best lambda
+  cv_fit <- cv.glmnet(X_boot, y_boot, alpha = 0, lambda = lambda_grid, nfolds = 5)
+  return(cv_fit$lambda.min)  # Return lambda that minimizes MSE
+}
+
+# Bootstraping
+bootstrap_results <- boot(data = data_raw_q1, statistic = bootstrap_ridge, R = 300)
+optimal_lambda_boot <- mean(bootstrap_results$t)  # Average lambda from bootstrap
+
+lambda_results <- data.frame(Lambda = bootstrap_results$t)
+
+ggplot(lambda_results, aes(x = Lambda)) +
+  geom_histogram(aes(fill = "Histogram of Lambda - Bootstrap"), bins = 15, position = "identity") +
+  geom_vline(aes(xintercept = optimal_lambda_cv, color = "Optimal Lambda CV"), 
+             linetype = "dashed", size = 1) +
+  geom_vline(aes(xintercept = optimal_lambda_boot, color = "Optimal Lambda Bootstrap"), 
+             linetype = "dashed", size = 1) +
+  
+  labs(
+    title = "Optimal Lambda Selection by Cross-Validation and Bootstrap",
+    x = "Lambda Value",
+    y = "Frequency"
+  ) +
+    scale_fill_manual(
+    name = "Distribution",
+    values = c("Histogram of Lambda - Bootstrap" = "lightblue")
+  ) +
+  scale_color_manual(
+    name = "Optimal Lambda",
+    values = c("Optimal Lambda CV" = "blue", "Optimal Lambda Bootstrap" = "red")
+  ) +
+  theme_minimal()
+
+
+```
+
+- Bootstrap repeatedly samples the data, which includes variability.
+- Bootstrap can capture more variance and provide a conservative estimate that emphasizes stability.
+- CV method provides a reliable estimate and is less computationally intensive than bootstrap.
+- Using both approaches provides insight into the stability and robustness of the model under different sampling conditions. 
+- Assist in selecting a complexity parameter $\lambda$ that generalizes well to unseen data.
+
+## 1-(e)
+```{r 1-e}
+# Assuming `data_raw_q1` is your dataset
+# Split data into training and test sets (as done in previous parts)
+set.seed(123)
+sample <- sample(c(TRUE, FALSE), nrow(data_raw_q1), replace = TRUE, prob = c(2/3, 1/3))
+train_data <- data_raw_q1[sample, ]
+test_data <- data_raw_q1[!sample, ]
+
+# Fit the first GAM model with lower complexity (e.g., 3 knots)
+gam_mdl_low_comp <- mgcv::gam(LC50 ~ s(TPSA, k = 3) + s(SAacc, k = 3) +
+                                        s(H050, k = 3) + s(MLOGP, k = 3) +
+                                        s(RDCHI, k = 3) + s(GATS1p, k = 3) +
+                                        s(nN, k = 3) + s(C040, k = 3), 
+                                        data = train_data)
+
+# Fit the second GAM model with higher complexity (e.g., 10 knots)
+gam_mdl_high_comp <- mgcv::gam(LC50 ~ s(TPSA, k = 10) + s(SAacc, k = 10) +
+                                         s(H050, k = 10) + s(MLOGP, k = 10) +
+                                         s(RDCHI, k = 10) + s(GATS1p, k = 10) +
+                                         s(nN, k = 9) + s(C040, k = 5),
+                                       data = train_data)
+
+# Summary of both models
+summary(gam_mdl_low_comp)
+summary(gam_mdl_high_comp)
+
+# Make predictions on the test set
+test_pred_low <- predict(gam_mdl_low_comp, newdata = test_data)
+test_pred_high <- predict(gam_mdl_high_comp, newdata = test_data)
+
+# Calculate test errors
+test_error_low <- mean((test_pred_low - test_data$LC50)^2)
+test_error_high <- mean((test_pred_high - test_data$LC50)^2)
+
+# Print test errors
+cat("Test Error (Low Complexity):", test_error_low, "\n")
+cat("Test Error (High Complexity):", test_error_high, "\n")
+
+```
+
+- Low complexity shows lower test error.
+- Low complexity GAM model avoids overfiiting.
+
+## 1-(f)
+```{r 1-f}
+# Fit the regression tree
+tree_model <- rpart(LC50 ~ TPSA + SAacc + H050 + MLOGP + RDCHI + GATS1p + nN + C040,
+                    data = train_data, 
+                    method = "anova")
+
+# Plot the regression tree
+rpart.plot(tree_model, main = "Regression Tree for LC50")
+
+# Extract and plot the complexity parameter table
+printcp(tree_model)
+plotcp(tree_model)
+
+# Prune the tree based on optimal CP
+optimal_cp <- tree_model$cptable[which.min(tree_model$cptable[, "xerror"]), "CP"]
+pruned_tree <- prune(tree_model, cp = optimal_cp)
+
+# Plot the pruned tree
+rpart.plot(pruned_tree, main = "Pruned Regression Tree for LC50")
+
+
+# Step 1: Make predictions on the test data
+predictions <- predict(pruned_tree, newdata = test_data)
+
+# Step 2: Combine predictions with actual values
+results <- data.frame(Actual = test_data$LC50, Predicted = predictions)
+
+# Display the results
+print(results)
+
+# Step 3: Evaluate the model's performance
+mse <- mean((results$Actual - results$Predicted)^2)
+rmse <- sqrt(mse)
+
+# Print the evaluation metrics
+cat("Mean Squared Error (MSE):", mse, "\n")
+cat("Root Mean Squared Error (RMSE):", rmse, "\n")
 
 ```
 
 
-
 # Problem 2. Classification
 
-```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
+```{r 2, include=FALSE}
 data_raw_q2 <- read.csv("data/pimaindiansdiabetes2.csv")
 
 ```
