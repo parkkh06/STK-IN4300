@@ -18,6 +18,10 @@ library(boot)
 library(mgcv)
 library(rpart)
 library(rpart.plot)
+library(gt)
+library(mlbench)
+library(class)
+library(caret)
 ```
 
 # Problem 1. Regression
@@ -32,7 +36,7 @@ data_raw_q1 <- data_raw_q1 %>%
 ```
 
 
-## 1-(a)
+## 1-(a) Plain linear regression.
 
 Train-test set split
 ```{r 1-a}
@@ -43,26 +47,26 @@ train_data  <- data_raw_q1[sample, ]
 test_data   <- data_raw_q1[!sample, ]
 ```
 
-### 1-(a)-(i)
+### 1-(a)-(i) Regression - linear effect.
 
 (i) model each of them directly as a linear effect
 ```{r 1-a-i}
-mdl_linear <- lm(LC50 ~ TPSA + SAacc + H050 + MLOGP + RDCHI + GATS1p + nN + C040, data = train_data)
+linear_reg_mdl_linear <- lm(LC50 ~ TPSA + SAacc + H050 + MLOGP + RDCHI + GATS1p + nN + C040,
+                            data = train_data)
 
-train_pred_linear <- predict(mdl_linear, train_data)
-test_pred_linear <- predict(mdl_linear, test_data)
+train_pred_linear <- predict(linear_reg_mdl_linear, train_data)
+test_pred_linear <- predict(linear_reg_mdl_linear, test_data)
 
 # Performance metrics: MSE
 train_error_linear <- mean((train_pred_linear - train_data$LC50)^2)
 test_error_linear <- mean((test_pred_linear - test_data$LC50)^2)
 
-summary(mdl_linear)
+summary(linear_reg_mdl_linear)
 ```
 
-### 1-(a)-(ii)
+### 1-(a)-(ii) Regression - Dummy encoding.
 
 (ii) transform each of them using a 0/1 dummy encoding where 0 represents absence of the specific atom and 1 represents presence of the specific atoms.
-
 
 **Data encoding**
 ```{r 1-a-ii-encode}
@@ -82,17 +86,18 @@ test_data_encode <- test_data %>%
 
 **Model training**
 ```{r 1-a-ii-mdl}
-mdl_encode <- lm(LC50 ~ TPSA + SAacc + H050_encode + MLOGP + RDCHI + GATS1p + nN_encode + C040_encode, 
-                 data = train_data_encode)
+linear_reg_mdl_encode <- lm(LC50 ~ TPSA + SAacc + H050_encode + MLOGP + 
+                              RDCHI + GATS1p + nN_encode + C040_encode,
+                            data = train_data_encode)
 
-train_pred_encode <- predict(mdl_encode, train_data_encode)
-test_pred_encode <- predict(mdl_encode, test_data_encode)
+train_pred_encode <- predict(linear_reg_mdl_encode, train_data_encode)
+test_pred_encode <- predict(linear_reg_mdl_encode, test_data_encode)
 
 # Performance metrics: MSE
 train_error_encode <- mean((train_pred_encode - train_data_encode$LC50)^2)
 test_error_encode <- mean((test_pred_encode - test_data_encode$LC50)^2)
 
-summary(mdl_encode)
+summary(linear_reg_mdl_encode)
 ```
 
 
@@ -100,9 +105,9 @@ summary(mdl_encode)
 - Encoding H050, nN, C040 induces information losses.
 
 
-## 1-(b)
-```{r 1-b}
+## 1-(b) Bootstrap - linear regression.
 
+```{r 1-b}
 model_training <- function(input_df) {
   
   sample <- sample(c(TRUE, FALSE), nrow(input_df), replace=TRUE, prob=c(2/3, 1/3))
@@ -131,7 +136,8 @@ model_training <- function(input_df) {
   test_error_linear <- mean((test_pred_linear - test_data$LC50)^2)
 
 
-  mdl_encode <- lm(LC50 ~ TPSA + SAacc + H050_encode + MLOGP + RDCHI + GATS1p + nN_encode + C040_encode,
+  mdl_encode <- lm(LC50 ~ TPSA + SAacc + H050_encode + MLOGP + RDCHI + 
+                     GATS1p + nN_encode + C040_encode,
                    data = train_data_encode)
 
   train_pred_encode <- predict(mdl_encode, train_data_encode)
@@ -149,19 +155,21 @@ model_training <- function(input_df) {
     )
 }
 
-train_test_error_df <- purrr::map_dfr(1:200, ~ model_training(data_raw_q1))
+bootstrap_train_test_error_df <- purrr::map_dfr(1:200, ~ model_training(data_raw_q1))
 
-avg_test_error_linear <- mean(train_test_error_df$test_error_linear)
-avg_test_error_encode <- mean(train_test_error_df$test_error_encode)
+bootstrap_avg_test_error_linear <- mean(bootstrap_train_test_error_df$test_error_linear)
+bootstrap_avg_test_error_encode <- mean(bootstrap_train_test_error_df$test_error_encode)
 
-ggplot(train_test_error_df) +
+ggplot(bootstrap_train_test_error_df) +
   geom_histogram(aes(x = test_error_linear, fill = "Test Error - Linear"), 
                  binwidth = 0.05, alpha = 0.5) +
   geom_histogram(aes(x = test_error_encode, fill = "Test Error - Encode"), 
                  binwidth = 0.05, alpha = 0.5) +
-  geom_vline(aes(xintercept = avg_test_error_linear, color = "Average Test Error - Linear"), 
+  geom_vline(aes(xintercept = bootstrap_avg_test_error_linear, 
+                 color = "Average Test Error - Linear"), 
              linetype = "dashed", size = 1) +
-  geom_vline(aes(xintercept = avg_test_error_encode, color = "Average Test Error - Encode"), 
+  geom_vline(aes(xintercept = bootstrap_avg_test_error_encode, 
+                 color = "Average Test Error - Encode"), 
              linetype = "dashed", size = 1) +
   scale_fill_manual(
     name = "Test Error Distribution",
@@ -177,50 +185,47 @@ ggplot(train_test_error_df) +
     y = "Count"
   ) +
   theme_minimal()
-
-
 ```
 
-- We reduce the influence of any particular train-test split that could have been unusually favorable or unfavorable for either model. 
+- We reduce the influence of any particular train-test split that could have been unusually favorable or unfavorable for either model.
 - This allows us to observe the average performance and variability of each model under different data conditions, providing a more stable insight into each model's effectiveness.
-
-
-- Dummy encoding in Option (ii) can lead to worse performance because it reduces the granularity of information for count variables (like H050, nN, C040). 
+- Dummy encoding in Option (ii) can lead to worse performance because it reduces the granularity of information for count variables (like H050, nN, C040).
 - When we replace continuous or count data with binary indicators, we lose information about the magnitude of these variables. For instance, whether a molecule has one nitrogen atom or five becomes indistinguishable once we binarize it. This simplification can lead to a loss in predictive power, as the actual count values may carry nuanced information relevant to toxicity predictions. Thus, models using dummy encoding often struggle to capture relationships that might be effectively captured by the original count values, leading to higher test errors.
 
 
+## 1-(c) Variable selection.
 
-## 1-(c)
-
-Variable selection
+**Variable selection**
+- Forward selection and Backward elimination
+- AIC, BIC
 ```{r 1-c-variable-selection}
-# Define the full model (all predictors included)
-full_model <- lm(LC50 ~ TPSA + SAacc + H050 + MLOGP + RDCHI + GATS1p + nN + C040, data = data_raw_q1)
+full_model <- lm(LC50 ~ TPSA + SAacc + H050 + MLOGP + RDCHI + GATS1p + nN + C040, 
+                 data = train_data)
 
-# Define the null model (only intercept)
-null_model <- lm(LC50 ~ 1, data = data_raw_q1)
+null_model <- lm(LC50 ~ 1, 
+                 data = train_data)
 
-# Perform Backward Elimination with AIC
-backward_aic <- step(full_model, direction = "backward", k = 2)  # AIC criterion (default in step function)
+# Backward, AIC
+backward_aic <- step(full_model, direction = "backward", k = 2)
 
-# Perform Backward Elimination with BIC
-backward_bic <- step(full_model, direction = "backward", k = log(nrow(data_raw_q1)))  # BIC criterion
+# Backward, BIC
+backward_bic <- step(full_model, direction = "backward", k = log(nrow(train_data)))
 
-# Perform Forward Selection with AIC
-forward_aic <- step(null_model, scope = formula(full_model), direction = "forward", k = 2)  # AIC criterion
+# Forward, AIC
+forward_aic <- step(null_model, scope = formula(full_model), direction = "forward", k = 2)
 
-# Perform Forward Selection with BIC
-forward_bic <- step(null_model, scope = formula(full_model), direction = "forward", k = log(nrow(data_raw_q1)))  # BIC criterion
+# Forward, BIC
+forward_bic <- step(null_model, scope = formula(full_model), 
+                    direction = "forward", k = log(nrow(train_data)))
 
-# Extract selected variables for each model
 selected_backward_aic <- names(coef(backward_aic))[-1]
 selected_backward_bic <- names(coef(backward_bic))[-1]
 selected_forward_aic <- names(coef(forward_aic))[-1]
 selected_forward_bic <- names(coef(forward_bic))[-1]
 ```
 
+
 ```{r 1-c-result}
-# Print the selected variables for comparison
 cat("Backward Selection (AIC):", selected_backward_aic, "\n")
 cat("Backward Selection (BIC):", selected_backward_bic, "\n")
 cat("Forward Selection (AIC):", selected_forward_aic, "\n")
@@ -229,15 +234,31 @@ cat("Forward Selection (BIC):", selected_forward_bic, "\n")
 
 - The variable selection shows the same result for Backward- and Forward selection on both AIC and BIC criteria.
 
-## 1-(d)
+```{r 1-c-mdl-training}
+variable_selected_formula <- as.formula(paste("LC50 ~", 
+                                          paste(selected_forward_aic, collapse = " + ")))
+
+variable_selected_mdl <- lm(variable_selected_formula, 
+                            data = test_data)
+
+variable_selected_mdl_test_error <- mean((variable_selected_mdl$fitted.values - test_data$LC50)^2)
+
+cat("Test error (Variable selection) :", variable_selected_mdl_test_error, "\n")
+
+```
+
+
+
+## 1-(d) Apply ridge regression and use both a bootstrap procedure.
+
 
 ```{r 1-d}
 
-X <- as.matrix(data_raw_q1 %>% dplyr::select(-LC50)) 
-y <- data_raw_q1$LC50
+X <- as.matrix(train_data %>% dplyr::select(-LC50)) 
+y <- train_data$LC50
 
-# Define a grid of lambda
-lambda_grid <- 10^seq(5, -5, length = 100)
+# Lambda grid
+lambda_grid <- 10^seq(3, -3, length = 100)
 
 # CV - optimal lamnda
 set.seed(123)
@@ -249,17 +270,14 @@ bootstrap_ridge <- function(data, indices) {
   # Bootstrap resampling
   X_boot <- X[indices, ]
   y_boot <- y[indices]
-  
-  # Fit ridge regression model for each lambda
-  fit <- glmnet(X_boot, y_boot, alpha = 0, lambda = lambda_grid)
-  
+
   # Use cross-validation on bootstrap sample to find the best lambda
   cv_fit <- cv.glmnet(X_boot, y_boot, alpha = 0, lambda = lambda_grid, nfolds = 5)
   return(cv_fit$lambda.min)  # Return lambda that minimizes MSE
 }
 
 # Bootstraping
-bootstrap_results <- boot(data = data_raw_q1, statistic = bootstrap_ridge, R = 300)
+bootstrap_results <- boot(data = train_data, statistic = bootstrap_ridge, R = 300)
 optimal_lambda_boot <- mean(bootstrap_results$t)  # Average lambda from bootstrap
 
 lambda_results <- data.frame(Lambda = bootstrap_results$t)
@@ -270,7 +288,6 @@ ggplot(lambda_results, aes(x = Lambda)) +
              linetype = "dashed", size = 1) +
   geom_vline(aes(xintercept = optimal_lambda_boot, color = "Optimal Lambda Bootstrap"), 
              linetype = "dashed", size = 1) +
-  
   labs(
     title = "Optimal Lambda Selection by Cross-Validation and Bootstrap",
     x = "Lambda Value",
@@ -295,95 +312,237 @@ ggplot(lambda_results, aes(x = Lambda)) +
 - Using both approaches provides insight into the stability and robustness of the model under different sampling conditions. 
 - Assist in selecting a complexity parameter $\lambda$ that generalizes well to unseen data.
 
-## 1-(e)
-```{r 1-e}
-# Assuming `data_raw_q1` is your dataset
-# Split data into training and test sets (as done in previous parts)
-set.seed(123)
-sample <- sample(c(TRUE, FALSE), nrow(data_raw_q1), replace = TRUE, prob = c(2/3, 1/3))
-train_data <- data_raw_q1[sample, ]
-test_data <- data_raw_q1[!sample, ]
 
-# Fit the first GAM model with lower complexity (e.g., 3 knots)
+## 1-(e) Generalised additive model (GAM).
+
+```{r 1-e}
+set.seed(123)
+#sample <- sample(c(TRUE, FALSE), nrow(data_raw_q1), replace = TRUE, prob = c(2/3, 1/3))
+#train_data <- data_raw_q1[sample, ]
+#test_data <- data_raw_q1[!sample, ]
+
 gam_mdl_low_comp <- mgcv::gam(LC50 ~ s(TPSA, k = 3) + s(SAacc, k = 3) +
                                         s(H050, k = 3) + s(MLOGP, k = 3) +
                                         s(RDCHI, k = 3) + s(GATS1p, k = 3) +
-                                        s(nN, k = 3) + s(C040, k = 3), 
-                                        data = train_data)
+                                        s(nN, k = 3) + s(C040, k = 3),
+                              data = train_data)
 
-# Fit the second GAM model with higher complexity (e.g., 10 knots)
 gam_mdl_high_comp <- mgcv::gam(LC50 ~ s(TPSA, k = 10) + s(SAacc, k = 10) +
                                          s(H050, k = 10) + s(MLOGP, k = 10) +
                                          s(RDCHI, k = 10) + s(GATS1p, k = 10) +
                                          s(nN, k = 9) + s(C040, k = 5),
-                                       data = train_data)
+                               data = train_data)
 
-# Summary of both models
 summary(gam_mdl_low_comp)
 summary(gam_mdl_high_comp)
+```
 
-# Make predictions on the test set
-test_pred_low <- predict(gam_mdl_low_comp, newdata = test_data)
-test_pred_high <- predict(gam_mdl_high_comp, newdata = test_data)
+```{r 1-e-result}
+gam_mdl_test_pred_low <- predict(gam_mdl_low_comp, newdata = test_data)
+gam_mdl_test_pred_high <- predict(gam_mdl_high_comp, newdata = test_data)
 
-# Calculate test errors
-test_error_low <- mean((test_pred_low - test_data$LC50)^2)
-test_error_high <- mean((test_pred_high - test_data$LC50)^2)
+gam_mdl_test_error_low <- mean((gam_mdl_test_pred_low - test_data$LC50)^2)
+gam_mdl_test_error_high <- mean((gam_mdl_test_pred_high - test_data$LC50)^2)
 
-# Print test errors
-cat("Test Error (Low Complexity):", test_error_low, "\n")
-cat("Test Error (High Complexity):", test_error_high, "\n")
-
+cat("Test Error (Low Complexity):", gam_mdl_test_error_low, "\n")
+cat("Test Error (High Complexity):", gam_mdl_test_error_high, "\n")
 ```
 
 - Low complexity shows lower test error.
-- Low complexity GAM model avoids overfiiting.
+- Low complexity GAM model avoids overfitting.
 
-## 1-(f)
+
+## 1-(f) Regression Tree
 ```{r 1-f}
 # Fit the regression tree
-tree_model <- rpart(LC50 ~ TPSA + SAacc + H050 + MLOGP + RDCHI + GATS1p + nN + C040,
-                    data = train_data, 
+reg_tree_mdl <- rpart(LC50 ~ TPSA + SAacc + H050 + MLOGP + RDCHI + GATS1p + nN + C040,
+                    data = train_data,
                     method = "anova")
 
-# Plot the regression tree
-rpart.plot(tree_model, main = "Regression Tree for LC50")
+rpart.plot(reg_tree_mdl, main = "Regression Tree for LC50")
 
-# Extract and plot the complexity parameter table
-printcp(tree_model)
-plotcp(tree_model)
+printcp(reg_tree_mdl)
+plotcp(reg_tree_mdl)
 
-# Prune the tree based on optimal CP
-optimal_cp <- tree_model$cptable[which.min(tree_model$cptable[, "xerror"]), "CP"]
-pruned_tree <- prune(tree_model, cp = optimal_cp)
+# Pruning
+optimal_cp <- reg_tree_mdl$cptable[which.min(reg_tree_mdl$cptable[, "xerror"]), "CP"]
+reg_tree_mdl_pruned <- prune(reg_tree_mdl, cp = optimal_cp)
 
-# Plot the pruned tree
-rpart.plot(pruned_tree, main = "Pruned Regression Tree for LC50")
+# pruned tree
+rpart.plot(reg_tree_mdl_pruned, main = "Pruned Regression Tree for LC50")
 
+# test data
+test_pred_reg_tree <- predict(reg_tree_mdl_pruned, newdata = test_data)
 
-# Step 1: Make predictions on the test data
-predictions <- predict(pruned_tree, newdata = test_data)
-
-# Step 2: Combine predictions with actual values
-results <- data.frame(Actual = test_data$LC50, Predicted = predictions)
-
-# Display the results
-print(results)
-
-# Step 3: Evaluate the model's performance
-mse <- mean((results$Actual - results$Predicted)^2)
-rmse <- sqrt(mse)
-
-# Print the evaluation metrics
-cat("Mean Squared Error (MSE):", mse, "\n")
-cat("Root Mean Squared Error (RMSE):", rmse, "\n")
+test_error_mse_reg_tree <- mean((test_pred_reg_tree - test_data$LC50)^2)
 
 ```
+
+- Original tree size: 12
+- Pruned tree size: 11
+
+```{r 1-f-result}
+cat("Mean Squared Error (MSE):", test_error_mse_reg_tree, "\n")
+```
+
+
+
+## 1-(g) Model comparison.
+```{r 1-g}
+results_table <- data.frame(
+  Model = c(
+    "1-(a)-i - Linear effect",
+    "1-(a)-ii - Dummy encoded",
+    "1-(b) - Boostrap - Linear effect",
+    "1-(b) - Boostrap - Dummy encoded",
+    "1-(c) - Variable selection",
+    "1-(e) - GAM - Low Complexity",
+    "1-(e) - GAM - High Complexity",
+    "1-(f) - Regression Tree"
+  ),
+  Test_Error = c(
+    test_error_linear,
+    test_error_encode,
+    bootstrap_avg_test_error_linear,
+    bootstrap_avg_test_error_encode,
+    variable_selected_mdl_test_error,
+    gam_mdl_test_error_low,
+    gam_mdl_test_error_high,
+    test_error_mse_reg_tree
+  )
+)
+
+# Create the gt table
+results_table %>%
+  gt() %>%
+  tab_header(
+    title = "Model Comparison - Test Errors"
+  ) %>%
+  cols_label(
+    Model = "Model Type",
+    Test_Error = "Test Error (MSE)"
+  ) %>%
+  fmt(
+    columns = vars(Test_Error),  # Use vars() to specify the columns
+    fns = function(x) round(x, 4)  # Round to 4 decimal places
+  )
+
+```
+
+- Variable selection shows the lowest test error. Avoided overfitting.
+- Highest test error for Regression tree. Possible sing of overfitting.
+- Model training with Linear effect shows low test error in general. Dummy encoding has lost necessary information for model training.
+- For GAM model, low complexity shows lower test error. Avoided overfitting. However, high complexity indicates there might have been overfitting due to its high complexity.
 
 
 # Problem 2. Classification
 
 ```{r 2, include=FALSE}
-data_raw_q2 <- read.csv("data/pimaindiansdiabetes2.csv")
+data("PimaIndiansDiabetes2", package = "mlbench")
+df <- na.omit(PimaIndiansDiabetes2)  # Remove rows with NA values
+```
+
+## 2-(a) k-NN
+```{r 2-a}
+set.seed(42)
+train_index <- createDataPartition(df$diabetes, p = 2/3, list = FALSE)
+train_data <- df[train_index, ]
+test_data <- df[-train_index, ]
+
+# Standardize the features (scaling)
+train_scaled <- train_data %>%
+  mutate(across(where(is.numeric), scale))
+test_scaled <- test_data %>%
+  mutate(across(where(is.numeric), scale))
+
+# Define range of k values to test
+k_values <- 1:20
+
+# Define 5-Fold and LOOCV cross-validation controls
+ctrl_5fold <- trainControl(method = "cv", number = 5)
+ctrl_loocv <- trainControl(method = "LOOCV")
+
+# Function to calculate 5-fold CV error for a given k
+cv_error_5fold <- function(k) {
+  knn_model <- train(diabetes ~ ., 
+                     data = train_scaled,
+                     method = "knn",
+                     tuneGrid = data.frame(k = k),
+                     trControl = ctrl_5fold)
+  1 - max(knn_model$results$Accuracy)
+}
+
+# Function to calculate LOOCV error for a given k
+cv_error_loocv <- function(k) {
+  knn_model <- train(diabetes ~ ., data = train_scaled,
+                     method = "knn",
+                     tuneGrid = data.frame(k = k),
+                     trControl = ctrl_loocv)
+  1 - max(knn_model$results$Accuracy)
+}
+
+# Function to calculate test error for a given k
+test_error <- function(k) {
+  test_pred <- knn(train_scaled[,-9], test_scaled[,-9], train_scaled$diabetes, k = k)
+  mean(test_pred != test_scaled$diabetes)
+}
+
+# Apply each function over k_values using purrr::map_dbl to return a numeric vector
+cv_errors_5fold <- purrr::map_dbl(k_values, cv_error_5fold)
+cv_errors_loocv <- purrr::map_dbl(k_values, cv_error_loocv)
+test_errors <- purrr::map_dbl(k_values, test_error)
+
+# Combine results into a data frame for plotting
+error_df <- data.frame(k = k_values,
+                       `5-Fold CV Error` = cv_errors_5fold,
+                       `LOOCV Error` = cv_errors_loocv,
+                       `Test Error` = test_errors)
+
+# Melt the data for easier plotting with ggplot2
+library(reshape2)
+error_df_long <- melt(error_df, id.vars = "k", variable.name = "Error_Type", value.name = "Error")
+
+# Plot the errors for different values of k
+ggplot(error_df_long, aes(x = k, y = Error, color = Error_Type)) +
+  geom_line(size = 1) +
+  geom_point(size = 2) +
+  labs(title = "k-NN Classification Errors for Different k Values",
+       x = "Number of Neighbors (k)",
+       y = "Error Rate") +
+  scale_color_manual(values = c("blue", "red", "black")) +
+  theme_minimal() +
+  theme(legend.title = element_blank())
 
 ```
+## 2-(b)
+```{r 1-b}
+gam_full <- gam(diabetes ~ s(pregnant) + s(glucose) + s(pressure) + s(triceps) +
+                  s(insulin) + s(mass) + s(pedigree) + s(age),
+                family = binomial, data = df)
+
+# Summarize the full model to view terms and significance levels
+summary(gam_full)
+
+# Perform variable selection using a backward selection approach with AIC
+# `select = TRUE` allows GAM to automatically drop non-significant terms based on AIC
+gam_selected <- gam(diabetes ~ s(pregnant) + s(glucose) + s(pressure) + s(triceps) +
+                      s(insulin) + s(mass) + s(pedigree) + s(age),
+                    family = binomial, data = df, select = TRUE)
+
+# Summarize the selected model
+summary(gam_selected)
+
+```
+
+
+### 2-(b)-1. Significant predictors (glucose, mass, pedigree and age):
+- If glucose has a high EDF and is significant, it means that glucose level has a non-linear effect on diabetes risk, with certain ranges having a higher or lower risk.
+- If mass is significant with an EDF close to 1, it suggests that higher BMI generally increases the risk of diabetes, likely in a linear fashion.
+- If age shows a non-linear effect, this could imply that certain age ranges have a higher influence on diabetes risk than others, capturing complex age-related effects.
+- pedigree
+
+### 2-(b)-2. Non-significant predictors (pregnant, triceps, pressure, insulin):
+These variables may not significantly affect the response after accounting for other variables, suggesting they might not be essential predictors in the model.
+
+
+
