@@ -1,5 +1,5 @@
 ---
-title: "assignment_2"
+title: "STK4300 - Assignment 2"
 author: "Kyunhee Park"
 date: "`r Sys.Date()`"
 output: html_document
@@ -24,6 +24,7 @@ library(class)
 library(caret)
 library(ipred)
 library(randomForest)
+library(reshape2)
 ```
 
 # Problem 1. Regression
@@ -265,7 +266,7 @@ lambda_grid <- 10^seq(3, -3, length = 100)
 # CV - optimal lamnda
 set.seed(123)
 cv_ridge <- cv.glmnet(X, y, alpha = 0, lambda = lambda_grid, nfolds = 5)
-optimal_lambda_cv <- cv_ridge$lambda.min  # Lambda with minimum MSE in CV
+optimal_lambda_cv <- cv_ridge$lambda.min
 
 # Bootstrap to find optimal lambda
 bootstrap_ridge <- function(data, indices) {
@@ -275,7 +276,7 @@ bootstrap_ridge <- function(data, indices) {
 
   # Use cross-validation on bootstrap sample to find the best lambda
   cv_fit <- cv.glmnet(X_boot, y_boot, alpha = 0, lambda = lambda_grid, nfolds = 5)
-  return(cv_fit$lambda.min)  # Return lambda that minimizes MSE
+  return(cv_fit$lambda.min)  
 }
 
 # Bootstraping
@@ -319,9 +320,6 @@ ggplot(lambda_results, aes(x = Lambda)) +
 
 ```{r 1-e}
 set.seed(123)
-#sample <- sample(c(TRUE, FALSE), nrow(data_raw_q1), replace = TRUE, prob = c(2/3, 1/3))
-#train_data <- data_raw_q1[sample, ]
-#test_data <- data_raw_q1[!sample, ]
 
 gam_mdl_low_comp <- mgcv::gam(LC50 ~ s(TPSA, k = 3) + s(SAacc, k = 3) +
                                         s(H050, k = 3) + s(MLOGP, k = 3) +
@@ -388,7 +386,6 @@ cat("Mean Squared Error (MSE):", test_error_mse_reg_tree, "\n")
 ```
 
 
-
 ## 1-(g) Model comparison.
 ```{r 1-g}
 results_table <- data.frame(
@@ -425,8 +422,8 @@ results_table %>%
     Test_Error = "Test Error (MSE)"
   ) %>%
   fmt(
-    columns = vars(Test_Error),  # Use vars() to specify the columns
-    fns = function(x) round(x, 4)  # Round to 4 decimal places
+    columns = vars(Test_Error), 
+    fns = function(x) round(x, 4)  
   )
 
 ```
@@ -441,17 +438,17 @@ results_table %>%
 
 ```{r 2, include=FALSE}
 data("PimaIndiansDiabetes2", package = "mlbench")
-df <- na.omit(PimaIndiansDiabetes2)  # Remove rows with NA values
-```
-
-## 2-(a) k-NN
-```{r 2-a}
+df <- na.omit(PimaIndiansDiabetes2)
+# train-test split
 set.seed(42)
 train_index <- createDataPartition(df$diabetes, p = 2/3, list = FALSE)
 train_data <- df[train_index, ]
 test_data <- df[-train_index, ]
+```
 
-# Standardize the features (scaling)
+## 2-(a) k-NN
+```{r 2-a}
+# scaling
 train_scaled <- train_data %>%
   mutate(across(where(is.numeric), scale))
 test_scaled <- test_data %>%
@@ -460,21 +457,18 @@ test_scaled <- test_data %>%
 # Define range of k values to test
 k_values <- 1:20
 
-# Define 5-Fold and LOOCV cross-validation controls
-ctrl_5fold <- trainControl(method = "cv", number = 5)
+ctrl_cv_5_fold <- trainControl(method = "cv", number = 5)
 ctrl_loocv <- trainControl(method = "LOOCV")
 
-# Function to calculate 5-fold CV error for a given k
-cv_error_5fold <- function(k) {
+cv_error_5_fold <- function(k) {
   knn_model <- train(diabetes ~ ., 
                      data = train_scaled,
                      method = "knn",
                      tuneGrid = data.frame(k = k),
-                     trControl = ctrl_5fold)
+                     trControl = ctrl_cv_5_fold)
   1 - max(knn_model$results$Accuracy)
 }
 
-# Function to calculate LOOCV error for a given k
 cv_error_loocv <- function(k) {
   knn_model <- train(diabetes ~ ., data = train_scaled,
                      method = "knn",
@@ -483,28 +477,25 @@ cv_error_loocv <- function(k) {
   1 - max(knn_model$results$Accuracy)
 }
 
-# Function to calculate test error for a given k
 test_error <- function(k) {
   test_pred <- knn(train_scaled[,-9], test_scaled[,-9], train_scaled$diabetes, k = k)
   mean(test_pred != test_scaled$diabetes)
 }
 
-# Apply each function over k_values using purrr::map_dbl to return a numeric vector
-cv_errors_5fold <- purrr::map_dbl(k_values, cv_error_5fold)
+cv_errors_5fold <- purrr::map_dbl(k_values, cv_error_5_fold)
 cv_errors_loocv <- purrr::map_dbl(k_values, cv_error_loocv)
 test_errors <- purrr::map_dbl(k_values, test_error)
 
-# Combine results into a data frame for plotting
 error_df <- data.frame(k = k_values,
                        `5-Fold CV Error` = cv_errors_5fold,
                        `LOOCV Error` = cv_errors_loocv,
                        `Test Error` = test_errors)
 
-# Melt the data for easier plotting with ggplot2
-library(reshape2)
-error_df_long <- melt(error_df, id.vars = "k", variable.name = "Error_Type", value.name = "Error")
+error_df_long <- reshape2::melt(error_df,
+                                id.vars = "k", 
+                                variable.name = "Error_Type", 
+                                value.name = "Error")
 
-# Plot the errors for different values of k
 ggplot(error_df_long, aes(x = k, y = Error, color = Error_Type)) +
   geom_line(size = 1) +
   geom_point(size = 2) +
@@ -515,39 +506,61 @@ ggplot(error_df_long, aes(x = k, y = Error, color = Error_Type)) +
   theme_minimal() +
   theme(legend.title = element_blank())
 
-```
-## 2-(b)
-```{r 1-b}
-gam_full <- gam(diabetes ~ s(pregnant) + s(glucose) + s(pressure) + s(triceps) +
-                  s(insulin) + s(mass) + s(pedigree) + s(age),
-                family = binomial, data = df)
+knn_test_error <- error_df_long %>%
+  filter(grepl("Test", Error_Type)) %>%  
+  summarise(minimum_error = min(Error, na.rm = TRUE))
 
-# Summarize the full model to view terms and significance levels
+cat("Test error - KNN: ", knn_test_error$minimum_error)
+
+```
+
+- Test error is lowest when k = 6, 7, 9, 10. Optimal k should be one of these numbers.
+- LOOCV error and CV error decrease as the number of neighbors increase.
+- However, test error increases as number of k increases.
+- After k = 12, the model shows the indication of underfitting.
+
+
+## 2-(b) Generalized additive model
+
+```{r 2-b-gam-full}
+# Variable selection - backward selection, AIC
+gam_full <- gam(diabetes ~ s(pregnant) + s(glucose) + s(pressure) + s(triceps) +
+                      s(insulin) + s(mass) + s(pedigree) + s(age),
+                    family = binomial, data = train_data, select = TRUE)
+
 summary(gam_full)
 
-# Perform variable selection using a backward selection approach with AIC
-# `select = TRUE` allows GAM to automatically drop non-significant terms based on AIC
-gam_selected <- gam(diabetes ~ s(pregnant) + s(glucose) + s(pressure) + s(triceps) +
-                      s(insulin) + s(mass) + s(pedigree) + s(age),
-                    family = binomial, data = df, select = TRUE)
-
-# Summarize the selected model
-summary(gam_selected)
+gam_full_pred <- predict(gam_full, newdata = test_data, type = "response")
+test_data$predicted <- ifelse(gam_full_pred > 0.5, 'pos', 'neg')
+test_error <- mean(test_data$predicted != test_data$diabetes)
+cat("Test error - Full GAM: ", test_error)
 
 ```
 
+```{r 2-b-gam-selected}
+gam_selected <- gam(diabetes ~ s(glucose) + s(age) + s(mass) + s(pedigree),
+                    family = binomial, data = train_data)
 
-### 2-(b)-1. Significant predictors (glucose, mass, pedigree and age):
-- If glucose has a high EDF and is significant, it means that glucose level has a non-linear effect on diabetes risk, with certain ranges having a higher or lower risk.
-- If mass is significant with an EDF close to 1, it suggests that higher BMI generally increases the risk of diabetes, likely in a linear fashion.
-- If age shows a non-linear effect, this could imply that certain age ranges have a higher influence on diabetes risk than others, capturing complex age-related effects.
-- pedigree
+gam_selected_pred <- predict(gam_selected, newdata = test_data, type = "response")
+test_data$predicted <- ifelse(gam_selected_pred > 0.5, 'pos', 'neg')
 
-### 2-(b)-2. Non-significant predictors (pregnant, triceps, pressure, insulin):
-These variables may not significantly affect the response after accounting for other variables, suggesting they might not be essential predictors in the model.
+gam_selected_test_error <- mean(test_data$predicted != test_data$diabetes)
+cat("Test error - selected GAM: ", gam_selected_test_error)
+
+```
+
+- Test error of the selected GAM model has increased.
+- Selected GAM model uses 4 features while full GAM model uses 8 features.
+
+### 2-(b) - Significant predictors
+- p-value larger than 0.05
+- glucose: EDF = 1, linear effects on the response variable.
+- mass: EDF = 2.013, higher non-linear effects on the response variable than glucose.
+- pedigree: EDF = 1.083, linear effects on the response variable.
+- age: EDF = 1.832, higher non-linear effects on the response variable.
 
 
-## 2-(c)
+## 2-(c) Decision Tree
 
 ### 2-(c)-i Classification tree
 ```{r 2-c-i}
@@ -556,7 +569,6 @@ tree_model <- rpart(diabetes ~ ., data = train_data, method = "class")
 tree_pred_train <- predict(tree_model, train_data, type = "class")
 tree_pred_test <- predict(tree_model, test_data, type = "class")
 
-# Calculate training and test error for classification tree
 tree_train_error <- mean(tree_pred_train != train_data$diabetes)
 tree_test_error <- mean(tree_pred_test != test_data$diabetes)
 ```
@@ -569,10 +581,8 @@ bagged_model <- bagging(diabetes ~ ., data = train_data, coob = TRUE)
 bagged_pred_train <- predict(bagged_model, train_data)
 bagged_pred_test <- predict(bagged_model, test_data)
 
-# Calculate training and test error for bagged trees
 bagged_train_error <- mean(bagged_pred_train != train_data$diabetes)
 bagged_test_error <- mean(bagged_pred_test != test_data$diabetes)
-
 ```
 
 ### 2-(c)-iii Random forest
@@ -582,36 +592,147 @@ rf_model <- randomForest(diabetes ~ ., data = train_data)
 rf_pred_train <- predict(rf_model, train_data)
 rf_pred_test <- predict(rf_model, test_data)
 
-# Calculate training and test error for random forest
 rf_train_error <- mean(rf_pred_train != train_data$diabetes)
 rf_test_error <- mean(rf_pred_test != test_data$diabetes)
-
-
 ```
 
 ### 2-(c)-result
 ```{r 2-c-result}
-# Print the results
-cat("Classification Tree:\n")
-cat("Training Error: ", tree_train_error, "\n")
-cat("Test Error: ", tree_test_error, "\n\n")
+results_df <- data.frame(
+  Model = c("Classification Tree", "Bagged Trees", "Random Forest"),
+  Training_Error = c(tree_train_error, bagged_train_error, rf_train_error),
+  Test_Error = c(tree_test_error, bagged_test_error, rf_test_error)
+)
 
-cat("Bagged Trees:\n")
-cat("Training Error: ", bagged_train_error, "\n")
-cat("Test Error: ", bagged_test_error, "\n\n")
+results_table <- results_df %>%
+  gt() %>%
+  fmt_number(columns = c("Training_Error", "Test_Error"), decimals = 4) %>%
+  tab_header(
+    title = "Training and Test Errors",
+  ) %>%
+  cols_label(
+    Model = "Model",
+    Training_Error = "Training Error",
+    Test_Error = "Test Error"
+  ) %>%
+  tab_style(
+    style = cell_fill(color = "lightblue"),
+    locations = cells_column_labels()
+  ) %>%
+  tab_style(
+    style = cell_text(weight = "bold"),
+    locations = cells_column_labels()
+  )
 
-cat("Random Forest:\n")
-cat("Training Error: ", rf_train_error, "\n")
-cat("Test Error: ", rf_test_error, "\n")
+results_table
 ```
 
-Classification Tree:
+#### 2-(c)-result-Classification Tree:
 
-The classification tree is a simple model that can capture non-linear relationships in the data. However, it might overfit the training data, leading to a higher test error compared to more robust methods like bagging or random forests.
-Bagged Trees:
+- Highest test error.
+- Simple and can capture non-linear relationships in the data. 
+- Possibility of overfitting the training data, a higher test error.
 
-Bagging (Bootstrap Aggregating) reduces the variance of the model by averaging multiple decision trees trained on different bootstrap samples of the training data. This usually results in a lower test error compared to a single classification tree.
-Random Forest:
+#### 2-(c)-result-Bagged Trees:
 
-Random forests further improve on bagging by introducing randomness in the feature selection process, which decorrelates the trees and reduces overfitting. This often leads to the lowest test error among the three methods.
+- Lowest test error
+- Reduces the variance of the model by averaging multiple decision trees trained on different bootstrap samples of the training data. 
+- Lower test error compared to a single classification tree.
 
+#### 2-(c)-result-Random Forest:
+
+- Introduces randomness in the feature selection process.
+- Decorrelates the trees and reduces overfitting. 
+
+## 2-(d) Neural Network
+
+```{r 2-d}
+# scaling
+train_scaled <- train_data %>%
+  mutate(across(where(is.numeric), scale))
+test_scaled <- test_data %>%
+  mutate(across(where(is.numeric), scale))
+
+ctrl <- trainControl(method = "cv", number = 5)
+
+# grid search - size of NN, regularization
+grid <- expand.grid(size = seq(1, 20, by = 2), decay = c(0, 0.1, 0.5, 1))
+
+set.seed(123)
+nn_model <- train(diabetes ~ ., 
+                  data = train_scaled, 
+                  method = "nnet",
+                  tuneGrid = grid,
+                  trControl = ctrl,
+                  linout = FALSE,         
+                  trace = FALSE,          
+                  maxit = 200)            
+
+# best nn model
+print(nn_model$bestTune)
+
+nn_train_pred <- predict(nn_model, newdata = train_scaled)
+nn_test_pred <- predict(nn_model, newdata = test_scaled)
+
+nn_train_error <- mean(nn_train_pred != train_data$diabetes)
+nn_test_error <- mean(nn_test_pred != test_data$diabetes)
+
+cat("Training Error: ", nn_train_error, "\n")
+cat("Test Error: ", nn_test_error, "\n")
+
+ggplot(nn_model) + 
+  labs(title = "Neural Network Model Tuning",
+       x = "Number of Neurons in Hidden Layer (size)",
+       y = "Accuracy") +
+  theme_minimal()
+
+```
+
+- grid search is implemented: size from 1-20, decay factor(0, 0.1, 0.5, 1)
+- Best NN model: size = 7, decay = 0.5
+
+
+## 2-(e) Model comparison
+```{r 2-e}
+results_table <- data.frame(
+  Model = c(
+    "KNN",
+    "GAM",
+    "Classification Tree",
+    "Bagged Tree",
+    "Random Forest",
+    "Neural Network"
+  ),
+  Test_Error = c(
+    knn_test_error$minimum_error,
+    gam_selected_test_error,
+    tree_test_error,
+    bagged_test_error,
+    rf_test_error,
+    nn_test_error
+  )
+)
+
+# Create the gt table
+results_table %>%
+  gt() %>%
+  tab_header(
+    title = "Model Comparison - Test Errors"
+  ) %>%
+  cols_label(
+    Model = "Model Type",
+    Test_Error = "Test Error"
+  ) %>%
+  fmt(
+    columns = vars(Test_Error),  # Use vars() to specify the columns
+    fns = function(x) round(x, 4)  # Round to 4 decimal places
+  )
+```
+
+- Final model selection: **GAM**
+- GAM has the lowest test error.
+- Feature selection has been conducted in GAM.
+- Able to assess the features' impact on the response variable.
+- GAM is highly interpretable.
+- Random forest has the second lowest test error.
+- Neural Network does not seem to be efficient considering its computational burdensome.
