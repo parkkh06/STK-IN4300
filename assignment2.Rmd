@@ -22,6 +22,8 @@ library(gt)
 library(mlbench)
 library(class)
 library(caret)
+library(ipred)
+library(randomForest)
 ```
 
 # Problem 1. Regression
@@ -545,4 +547,71 @@ summary(gam_selected)
 These variables may not significantly affect the response after accounting for other variables, suggesting they might not be essential predictors in the model.
 
 
+## 2-(c)
+
+### 2-(c)-i Classification tree
+```{r 2-c-i}
+# Classification Tree
+tree_model <- rpart(diabetes ~ ., data = train_data, method = "class")
+tree_pred_train <- predict(tree_model, train_data, type = "class")
+tree_pred_test <- predict(tree_model, test_data, type = "class")
+
+# Calculate training and test error for classification tree
+tree_train_error <- mean(tree_pred_train != train_data$diabetes)
+tree_test_error <- mean(tree_pred_test != test_data$diabetes)
+```
+
+
+### 2-(c)-ii Ensemble of bagged tree
+```{r 2-c-ii}
+# Bagged Trees
+bagged_model <- bagging(diabetes ~ ., data = train_data, coob = TRUE)
+bagged_pred_train <- predict(bagged_model, train_data)
+bagged_pred_test <- predict(bagged_model, test_data)
+
+# Calculate training and test error for bagged trees
+bagged_train_error <- mean(bagged_pred_train != train_data$diabetes)
+bagged_test_error <- mean(bagged_pred_test != test_data$diabetes)
+
+```
+
+### 2-(c)-iii Random forest
+```{r 2-c-iii}
+# Random Forest
+rf_model <- randomForest(diabetes ~ ., data = train_data)
+rf_pred_train <- predict(rf_model, train_data)
+rf_pred_test <- predict(rf_model, test_data)
+
+# Calculate training and test error for random forest
+rf_train_error <- mean(rf_pred_train != train_data$diabetes)
+rf_test_error <- mean(rf_pred_test != test_data$diabetes)
+
+
+```
+
+### 2-(c)-result
+```{r 2-c-result}
+# Print the results
+cat("Classification Tree:\n")
+cat("Training Error: ", tree_train_error, "\n")
+cat("Test Error: ", tree_test_error, "\n\n")
+
+cat("Bagged Trees:\n")
+cat("Training Error: ", bagged_train_error, "\n")
+cat("Test Error: ", bagged_test_error, "\n\n")
+
+cat("Random Forest:\n")
+cat("Training Error: ", rf_train_error, "\n")
+cat("Test Error: ", rf_test_error, "\n")
+```
+
+Classification Tree:
+
+The classification tree is a simple model that can capture non-linear relationships in the data. However, it might overfit the training data, leading to a higher test error compared to more robust methods like bagging or random forests.
+Bagged Trees:
+
+Bagging (Bootstrap Aggregating) reduces the variance of the model by averaging multiple decision trees trained on different bootstrap samples of the training data. This usually results in a lower test error compared to a single classification tree.
+Random Forest:
+
+Random forests further improve on bagging by introducing randomness in the feature selection process, which decorrelates the trees and reduces overfitting. This often leads to the lowest test error among the three methods.
 
